@@ -2,7 +2,6 @@
 """Real-world event markets. Review and test on the target GenLayer network before funding."""
 from genlayer import *
 from datetime import datetime, timezone
-import json
 
 
 @gl.evm.contract_interface
@@ -107,9 +106,8 @@ class EventMarket(gl.Contract):
                 f"Event: {title}\nCity: {city}\nDeadline UTC unix: {deadline}\n"
                 f"Primary ({source}):\n{first}\nSecondary ({backup}):\n{second}"
             )
-            raw = gl.nondet.exec_prompt(prompt).strip()
-            data = json.loads(raw.removeprefix("```json").removesuffix("```").strip())
-            if data.get("outcome") not in ("YES", "NO", "UNKNOWN"):
+            data = gl.nondet.exec_prompt(prompt, response_format="json")
+            if not isinstance(data, dict) or data.get("outcome") not in ("YES", "NO", "UNKNOWN"):
                 raise gl.vm.UserError("Invalid model decision")
             return {"outcome": data["outcome"], "reason": str(data.get("reason", ""))[:400]}
 
