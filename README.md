@@ -14,6 +14,10 @@ The question is whether the named event *physically begins with attendees in the
 
 From `web/`, run `python3 -m http.server 8000`, then visit `http://localhost:8000`. The example card has placeholder evidence URLs; create a market with two real public URLs to try the local flow.
 
+## Local contract checks
+
+Install `genlayer-test` and `genvm-linter`, then from the project root run `python3 -m pytest tests -q` and `genvm-lint check contracts/EventMarket.py`. Six direct-mode tests cover independent market storage, stake cutoff, mocked validator agreement and disagreement, YES payouts, no-winner refunds, unknown evidence, and the seven-day refund path. These tests mock web pages and LLM output; they do not verify live evidence retrieval, finality, or value transfers on the chain.
+
 ## Before network deployment
 
 1. Run the contract in GenLayer Studio on the chosen network and check the syntax/API against its current runtime.
