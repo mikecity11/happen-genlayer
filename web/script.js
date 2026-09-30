@@ -39,25 +39,20 @@ function marketState(m) {
   if (Number(m.outcome) === 3) return 'Refund';
   return Date.now() >= Number(m.close_ts) * 1000 ? 'Closed' : 'Open';
 }
-function renderMarkets() {
-  const visible = markets.filter(m => {
-    const state = marketState(m);
-    return filter === 'all' || (filter === 'open' && state === 'Open') || (filter === 'closed' && state === 'Closed') || (filter === 'resolved' && !['Open','Closed'].includes(state));
-  });
-  $('#marketCount').textContent = visible.length + ' market' + (visible.length === 1 ? '' : 's');
-  $('#marketList').innerHTML = visible.length ? visible.map(m => {
-    const state = marketState(m), open = state === 'Open';
-    const afterDeadline = Date.now() > Number(m.deadline_ts) * 1000 + 86400000;
-    const refundable = Date.now() > Number(m.deadline_ts) * 1000 + 7 * 86400000;
-    const action = open ? `<button data-position="${Number(m.id)}">Take a side ↗</button>` :
-      Number(m.outcome) !== 0 ? `<button data-write="claim" data-market="${Number(m.id)}">Claim / refund ↗</button>` :
-      refundable ? `<button data-write="refund_unresolved" data-market="${Number(m.id)}">Unlock refunds ↗</button>` :
-      afterDeadline ? `<button data-write="resolve" data-market="${Number(m.id)}">Check outcome ↗</button>` :
-      '<button disabled>Awaiting event</button>';
-    return `<article class="market-card"><div class="card-top"><span class="category">◈ ${escapeHTML(m.city)}</span><span class="market-status ${open ? '' : 'closed'}"><i></i> ${escapeHTML(state)}</span></div><h3>${escapeHTML(m.title)}</h3><p>YES if the event physically begins in ${escapeHTML(m.city)} by the deadline. GenLayer validators check the evidence afterward.</p><div class="source-links"><a href="${safeURL(m.source)}" target="_blank" rel="noopener noreferrer">Primary source ↗</a><a href="${safeURL(m.backup)}" target="_blank" rel="noopener noreferrer">Second source ↗</a></div><div class="card-metrics"><div class="metric yes"><b>${gen(m.yes_total)} GEN</b><small>YES pool</small></div><div class="metric no"><b>${gen(m.no_total)} GEN</b><small>NO pool</small></div></div><div class="card-footer"><span>MARKET #${Number(m.id)} · CLOSES ${escapeHTML(date(m.close_ts))}</span>${action}</div></article>`;
-  }).join('') : `<div class="empty"><strong>${filter === 'all' ? 'No markets found yet.' : 'Nothing in this category yet.'}</strong>${filter === 'all' ? 'Be the first to create one on GenLayer.' : 'Try another filter.'}</div>`;
+function actionFor(m) {
+  const state = marketState(m), open = state === 'Open';
+  const afterDeadline = Date.now() > Number(m.deadline_ts) * 1000 + 86400000;
+  const refundable = Date.now() > Number(m.deadline_ts) * 1000 + 7 * 86400000;
+  return open ? `<button data-position="${Number(m.id)}">Take a side ↗</button>` :
+    Number(m.outcome) !== 0 ? `<button data-write="claim" data-market="${Number(m.id)}">Claim / refund ↗</button>` :
+    refundable ? `<button data-write="refund_unresolved" data-market="${Number(m.id)}">Unlock refunds ↗</button>` :
+    afterDeadline ? `<button data-write="resolve" data-market="${Number(m.id)}">Check outcome ↗</button>` :
+    '<button disabled>Awaiting event</button>';
+}
+function bindActions() {
   document.querySelectorAll('[data-position]').forEach(button => button.onclick = () => {
     selected = markets.find(m => Number(m.id) === Number(button.dataset.position));
+    if (!selected) return;
     $('#positionTitle').textContent = selected.title;
     $('#positionDialog').showModal();
   });
@@ -67,6 +62,30 @@ function renderMarkets() {
     catch (error) { toast(error.shortMessage || error.message || 'Transaction was not submitted.'); }
     finally { button.disabled = false; }
   });
+}
+function renderDetail() {
+  const id = Number(location.hash.match(/^#\/market\/(\d+)$/)?.[1]);
+  const m = markets.find(item => Number(item.id) === id);
+  const el = $('#marketDetail');
+  if (!m) { el.innerHTML = '<div class="empty"><strong>Market unavailable.</strong>Check the market number or return to Explore.</div>'; return; }
+  const state = marketState(m);
+  el.innerHTML = `<div class="detail-hero"><div><span class="eyebrow">MARKET #${Number(m.id)} / ${escapeHTML(m.city)}</span><h1>${escapeHTML(m.title)}</h1><span class="market-status ${state === 'Open' ? '' : 'closed'}"><i></i> ${escapeHTML(state)}</span></div><div class="detail-action"><span>THE MARKET</span><strong>${gen(BigInt(m.yes_total || 0) + BigInt(m.no_total || 0))} test GEN</strong>${actionFor(m)}</div></div><div class="detail-grid"><article><span class="eyebrow">THE RULES</span><h2>What settles this question?</h2><p>YES if the event physically begins with attendees in ${escapeHTML(m.city)} by the deadline. NO includes cancellation, online-only, a different city or postponement beyond the deadline.</p><div class="detail-dates"><div><small>POSITIONS CLOSE</small><strong>${escapeHTML(date(m.close_ts))}</strong></div><div><small>EVENT DEADLINE</small><strong>${escapeHTML(date(m.deadline_ts))}</strong></div></div></article><article><span class="eyebrow">CURRENT POOLS</span><h2>Where positions stand.</h2><div class="pool-row yes"><span>YES</span><strong>${gen(m.yes_total)} test GEN</strong></div><div class="pool-row no"><span>NO</span><strong>${gen(m.no_total)} test GEN</strong></div><p class="fine-print">Pool amounts reflect stakes, not probability or a price quote.</p></article><article class="evidence"><span class="eyebrow">PUBLIC EVIDENCE</span><h2>Check the sources.</h2><p>These URLs were set when the market was created. Validators use the evidence after the deadline.</p><a href="${safeURL(m.source)}" target="_blank" rel="noopener noreferrer">Primary evidence ↗</a><a href="${safeURL(m.backup)}" target="_blank" rel="noopener noreferrer">Independent backup ↗</a><a href="${EXPLORER}/address/${CONTRACT}" target="_blank" rel="noopener noreferrer">View on GenLayer Explorer ↗</a></article></div>`;
+  bindActions();
+}
+function renderMarkets() {
+  const visible = markets.filter(m => {
+    const state = marketState(m);
+    return filter === 'all' || (filter === 'open' && state === 'Open') || (filter === 'closed' && state === 'Closed') || (filter === 'resolved' && !['Open','Closed'].includes(state));
+  });
+  $('#marketCount').textContent = visible.length + ' market' + (visible.length === 1 ? '' : 's');
+  $('#marketList').innerHTML = visible.length ? visible.map(m => {
+    const state = marketState(m), open = state === 'Open';
+    return `<article class="market-card"><div class="card-top"><span class="category">◈ ${escapeHTML(m.city)}</span><span class="market-status ${open ? '' : 'closed'}"><i></i> ${escapeHTML(state)}</span></div><h3><a href="#/market/${Number(m.id)}">${escapeHTML(m.title)}</a></h3><p>YES if the event physically begins in ${escapeHTML(m.city)} by the deadline. GenLayer validators check the evidence afterward.</p><div class="source-links"><a href="${safeURL(m.source)}" target="_blank" rel="noopener noreferrer">Primary source ↗</a><a href="${safeURL(m.backup)}" target="_blank" rel="noopener noreferrer">Second source ↗</a></div><div class="card-metrics"><div class="metric yes"><b>${gen(m.yes_total)} GEN</b><small>YES pool</small></div><div class="metric no"><b>${gen(m.no_total)} GEN</b><small>NO pool</small></div></div><div class="card-footer"><a href="#/market/${Number(m.id)}">MARKET #${Number(m.id)} · VIEW DETAILS ↗</a>${actionFor(m)}</div></article>`;
+  }).join('') : `<div class="empty"><strong>${filter === 'all' ? 'No markets found yet.' : 'Nothing in this category yet.'}</strong>${filter === 'all' ? 'Be the first to create one on GenLayer.' : 'Try another filter.'}</div>`;
+  $('#featuredMarket').innerHTML = markets.length ? $('#marketList').querySelector('.market-card')?.outerHTML || '' : '<div class="empty">No markets have been created yet. <a href="#/create">Create the first one ↗</a></div>';
+  $('#exploreSummary').textContent = `${markets.length} onchain market${markets.length === 1 ? '' : 's'} · Studionet`;
+  bindActions();
+  renderDetail();
 }
 async function loadMarkets() {
   try {
@@ -118,7 +137,6 @@ document.querySelectorAll('[data-filter]').forEach(button => button.onclick = ()
   document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b === button));
   renderMarkets();
 });
-$('#createButton').onclick = $('#heroCreate').onclick = () => $('#createDialog').showModal();
 document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => button.closest('dialog').close());
 $('#createForm').onsubmit = async event => {
   event.preventDefault();
@@ -130,7 +148,7 @@ $('#createForm').onsubmit = async event => {
   const button = event.target.querySelector('[type=submit]'); button.disabled = true; button.textContent = 'Opening wallet…';
   try {
     await submitWrite('create_market', [f.get('title').trim(), f.get('city').trim(), BigInt(close), BigInt(deadline), f.get('source'), f.get('backup')]);
-    event.target.closest('dialog').close(); event.target.reset();
+    event.target.reset(); location.hash = '#/explore';
   } catch (error) { toast(error.shortMessage || error.message || 'Transaction was not submitted.'); }
   finally { button.disabled = false; button.textContent = 'Create on GenLayer ↗'; }
 };
@@ -149,4 +167,15 @@ $('#positionForm').onsubmit = async event => {
   finally { button.disabled = false; button.textContent = 'Review in wallet ↗'; }
 };
 if (pendingHash) toast(`A transaction is still being tracked. <a href="${EXPLORER}/tx/${encodeURIComponent(pendingHash)}" target="_blank" rel="noopener noreferrer">View on Explorer ↗</a>`, true);
+function route() {
+  const path = location.hash.slice(2);
+  const page = /^market\/\d+$/.test(path) ? 'market' : ['home','explore','create','how'].includes(path) ? path : 'home';
+  document.querySelectorAll('[data-page]').forEach(el => el.hidden = el.dataset.page !== page);
+  document.querySelectorAll('[data-nav]').forEach(el => el.classList.toggle('active', el.dataset.nav === page || (page === 'market' && el.dataset.nav === 'explore')));
+  if (page === 'market') renderDetail();
+  document.title = `${page === 'market' ? 'Market' : page[0].toUpperCase() + page.slice(1)} — Happen`;
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+route();
 loadMarkets();
